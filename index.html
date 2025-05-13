@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>تصنيف الصور</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh; /* Use min-height to ensure it covers the screen but allows scrolling if content overflows */
+            margin: 0;
+            background-color: #f4f4f4;
+            padding: 20px; /* Add some padding for smaller screens */
+            box-sizing: border-box; /* Include padding in the element's total width and height */
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 25px; /* Increased padding */
+            border-radius: 10px; /* Slightly more rounded corners */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); /* Softer and more spread shadow */
+            text-align: center;
+            width: 100%;
+            max-width: 500px; /* Set a max-width for better readability on larger screens */
+        }
+
+        h2 {
+            color: #333; /* Darker heading color */
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            margin-bottom: 15px;
+            display: block; /* Make it a block element to take full width */
+            margin-left: auto;
+            margin-right: auto;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        button {
+            padding: 12px 25px; /* Slightly larger button */
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px; /* Larger font size for button */
+            transition: background-color 0.3s ease; /* Smooth transition for hover effect */
+        }
+
+        button:hover {
+            background-color: #0056b3; /* Darker blue on hover */
+        }
+
+        #result-container, #error-container {
+            margin-top: 25px; /* Increased margin */
+            font-weight: bold;
+            line-height: 1.6; /* Improved line spacing for readability */
+        }
+
+        #error-container {
+            color: #dc3545; /* Bootstrap danger color for errors */
+        }
+
+        /* Styling for individual prediction lines for better clarity */
+        .prediction-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .prediction-line:last-child {
+            border-bottom: none;
+        }
+        .prediction-label {
+            text-align: left;
+        }
+        .prediction-probability {
+            text-align: right;
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>تصنيف الصور باستخدام نموذج Teachable Machine</h2>
+        <input type="file" id="image-upload" accept="image/*">
+        <button onclick="predictImage()">تصنيف الصورة</button>
+        <div id="result-container"></div>
+        <div id="error-container"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <script type="text/javascript">
+        // رابط المودل الذي تم تصديره من Teachable Machine ومستضاف عبر الإنترنت
+        const URL = "https://teachablemachine.withgoogle.com/models/b-OeJonxn/"; //  تأكد من أن هذا هو الرابط الصحيح من Teachable Machine
+
+        let model, maxPredictions;
+        let modelLoaded = false;
+
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+            const errorContainer = document.getElementById('error-container');
+            const resultContainer = document.getElementById('result-container'); // Get result container to clear it initially
+            
+            errorContainer.innerHTML = "جاري تحميل النموذج..."; // Initial loading message
+            resultContainer.innerHTML = ""; // Clear previous results if any
+
+            try {
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                modelLoaded = true;
+                console.log("Model loaded successfully from Teachable Machine URL!");
+                errorContainer.innerHTML = "تم تحميل النموذج بنجاح! يمكنك الآن رفع صورة لتصنيفها.";
+            } catch (error) {
+                console.error("Error loading the model from URL:", error);
+                errorContainer.innerHTML = "فشل تحميل النموذج من الرابط. يرجى التحقق من الرابط (" + URL + ") واتصالك بالإنترنت.<br>تفاصيل الخطأ: " + error.message;
+                modelLoaded = false;
+            }
+        }
+
+        init(); // قم بتحميل النموذج عند تحميل الصفحة
+
+        async function predictImage() {
+            const imageUpload = document.getElementById('image-upload');
+            const resultContainer = document.getElementById('result-container');
+            const errorContainer = document.getElementById('error-container');
+            
+            resultContainer.innerHTML = ""; // مسح النتيجة السابقة
+            // لا تمسح errorContainer هنا بالضرورة، إلا إذا كنت تريد إخفاء رسالة نجاح التحميل
+
+            if (!modelLoaded) {
+                errorContainer.innerHTML = "لم يتم تحميل النموذج بعد أو فشل تحميله. يرجى المحاولة مرة أخرى أو التحقق من الأخطاء.";
+                // يمكنك إضافة محاولة لإعادة تحميل النموذج هنا إذا أردت
+                // init(); 
+                return;
+            }
+
+            if (imageUpload.files && imageUpload.files[0]) {
+                errorContainer.innerHTML = ""; // مسح رسالة الخطأ السابقة عند بدء تصنيف جديد
+                resultContainer.innerHTML = "جاري تصنيف الصورة..."; // رسالة أثناء المعالجة
+
+                try {
+                    const image = new Image();
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        image.src = e.target.result;
+                        image.onload = async function() { // التأكد من تحميل الصورة بالكامل قبل التنبؤ
+                            try {
+                                const prediction = await model.predict(image);
+                                let resultText = "";
+                                for (let i = 0; i < maxPredictions; i++) {
+                                    // Applying new styling for each prediction line
+                                    resultText += `<div class="prediction-line">
+                                                     <span class="prediction-label">${prediction[i].className}:</span>
+                                                     <span class="prediction-probability">${(prediction[i].probability * 100).toFixed(2)}%</span>
+                                                   </div>`;
+                                }
+                                resultContainer.innerHTML = resultText;
+                                if (resultText === "") {
+                                    resultContainer.innerHTML = "لم يتمكن النموذج من تصنيف هذه الصورة.";
+                                }
+                            } catch (predictionError) {
+                                console.error("Error during model prediction:", predictionError);
+                                errorContainer.innerHTML = "حدث خطأ أثناء التنبؤ بالصورة: " + predictionError.message;
+                                resultContainer.innerHTML = ""; // مسح رسالة "جاري التصنيف"
+                            }
+                        }
+                        image.onerror = function() {
+                            errorContainer.innerHTML = "فشل تحميل الصورة المختارة. تأكد من أن الملف هو صورة صالحة.";
+                            resultContainer.innerHTML = ""; // مسح رسالة "جاري التصنيف"
+                        }
+                    }
+                    reader.onerror = function() {
+                        errorContainer.innerHTML = "فشل قراءة ملف الصورة.";
+                        resultContainer.innerHTML = ""; // مسح رسالة "جاري التصنيف"
+                    }
+                    reader.readAsDataURL(imageUpload.files[0]);
+
+                } catch (error) { // Catch errors related to FileReader or initial image object creation
+                    console.error("Error processing the image file:", error);
+                    errorContainer.innerHTML = "حدث خطأ أثناء معالجة ملف الصورة: " + error.message;
+                    resultContainer.innerHTML = ""; // مسح رسالة "جاري التصنيف"
+                }
+            } else {
+                resultContainer.innerHTML = ""; // Clear any "processing" message
+                errorContainer.innerHTML = "الرجاء تحديد ملف صورة أولاً.";
+            }
+        }
+    </script>
+</body>
+</html>
